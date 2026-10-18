@@ -1,7 +1,73 @@
 {
-  "date": null,
-  "generated_at": null,
+  "date": "2026-10-18",
+  "generated_at": "2026-10-18T16:06:54.942661+01:00",
   "model": "granite4:3b",
   "source": "BBC News RSS",
-  "questions": []
+  "questions": [
+    {
+      "question": "How many people were arrested after nationwide protests turned violent in Paris?",
+      "options": [
+        "1000",
+        "1500",
+        "1800",
+        "2000"
+      ],
+      "answer_index": 2,
+      "explanation": "The description states that around 1,800 people were arrested.",
+      "source_title": "Burnt out cars and shattered glass on Paris streets after protests turn to riots and looting",
+      "source_url": "https://www.bbc.co.uk/news/articles/c574pdzl0k4no?at_medium=RSS&at_campaign=rss"
+    },
+    {
+      "question": "What is the Green Party leader's stance on the 'Zionism is racism' motion?",
+      "options": [
+        "He will overturn the motion",
+        "He will amend the motion",
+        "He will stand by the motion until 2028",
+        "He will not stand by the motion"
+      ],
+      "answer_index": 2,
+      "explanation": "The Green Party leader stated that he would stand by the motion until 2028.",
+      "source_title": "Polanski says he will not overturn Green Party's 'Zionism is racism' motion",
+      "source_url": "https://www.bbc.co.uk/news/articles/cmn8w5v8yne4o?at_medium=RSS&at_campaign=rss"
+    },
+    {
+      "question": "What is the health secretary's announcement regarding children's hospitals?",
+      "options": [
+        "Ending corridor care",
+        "Increasing corridor care",
+        "Investing in urgent care system",
+        "Improving children's care"
+      ],
+      "answer_index": 2,
+      "explanation": "The health secretary announced a £140m investment in England's urgent care system.",
+      "source_title": "Ending corridor care in hospitals for children a priority, says health secretary",
+      "source_url": "https://www.bbc.co.uk/news/articles/cm2kezgd77qlo?at_medium=RSS&at_campaign=rss"
+    },
+    {
+      "question": "What is the focus of the BBC News report on homemade, synthetic drugs in the US?",
+      "options": [
+        "The epidemic's impact on the economy",
+        "The epidemic's impact on the environment",
+        "The epidemic's impact on public health",
+        "The epidemic's impact on the drug industry"
+      ],
+      "answer_index": 2,
+      "explanation": "The report discusses the deadly new drug epidemic and its impact on public health.",
+      "source_title": "A wave of homemade, synthetic drugs sweeps US and deepens crisis",
+      "source_url": "https://www.bbc.co.uk/news/articles/cmx2wvyv5j17o?at_medium=RSS&at_campaign=rss"
+    },
+    {
+      "question": "What is the focus of the BBC News report on synthetic drugs in Chicago jail?",
+      "options": [
+        "The availability of drugs in the jail",
+        "The impact of drugs on the jail's environment",
+        "The availability of drugs in the community",
+        "The impact of drugs on the jail's environment"
+      ],
+      "answer_index": 3,
+      "explanation": "The report discusses the availability of drugs in the jail and the efforts to combat it.",
+      "source_title": "Watch: Police hunt for synthetic drugs in Chicago jail",
+      "source_url": "https://www.bbc.co.uk/news/videos/cq8ez4jz1z04o?at_medium=RSS&at_campaign=rss"
+    }
+  ]
 }
