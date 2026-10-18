@@ -67,17 +67,42 @@ Return ONLY valid JSON with this exact shape:
 Create exactly five distinct multiple-choice questions. Each must have exactly four plausible options, one correct answer, and answer_index as integer 0-3. Avoid questions that simply ask for a headline's exact wording. Do not include markdown or any text outside JSON.
 Evidence stories (source_index refers to the zero-based story index):
 """ + json.dumps(stories, ensure_ascii=False)
-    # Use the same direct Ollama CLI route that worked in the local test.
-    result = run(["ollama", "run", "--nowordwrap", MODEL], input_text=prompt, timeout=TIMEOUT_SECONDS)
-    output = result.stdout.strip()
-    if not output:
-        raise RuntimeError("Ollama returned empty output.")
-    # Tolerate accidental surrounding code fences, but reject malformed JSON.
-    output = re.sub(r"^\s*```(?:json)?\s*|\s*```\s*$", "", output, flags=re.I)
-    start, end = output.find("{"), output.rfind("}")
-    if start < 0 or end <= start:
-        raise RuntimeError("Granite did not return a JSON object.")
-    data = json.loads(output[start:end+1])
+    # Retry generation when a small local model emits malformed JSON.
+    # Only continue to validation/publishing after a response parses successfully.
+    data = None
+    last_error = None
+    for attempt in range(1, 4):
+        retry_prompt = prompt
+        if attempt > 1:
+            retry_prompt += (
+                "\\n\\nIMPORTANT: Your previous response was invalid JSON. "
+                "Return one complete, syntactically valid JSON object only. "
+                "Use double quotes, escape quotes inside strings, and do not truncate it."
+            )
+            logging.warning("Retrying Granite JSON generation (%s/3).", attempt)
+        result = run(
+            ["ollama", "run", "--nowordwrap", MODEL],
+            input_text=retry_prompt,
+            timeout=TIMEOUT_SECONDS,
+        )
+        output = result.stdout.strip()
+        if not output:
+            last_error = "Ollama returned empty output."
+            continue
+        # Tolerate accidental surrounding code fences.
+        output = re.sub(r"^\\s*```(?:json)?\\s*|\\s*```\\s*$", "", output, flags=re.I)
+        start, end = output.find("{"), output.rfind("}")
+        if start < 0 or end <= start:
+            last_error = "Granite did not return a JSON object."
+            continue
+        try:
+            data = json.loads(output[start:end+1])
+            break
+        except json.JSONDecodeError as exc:
+            last_error = f"Granite returned malformed JSON: {exc}"
+            logging.warning("Invalid JSON from Granite on attempt %s/3: %s", attempt, exc)
+    if data is None:
+        raise RuntimeError(f"Granite failed to return valid JSON after 3 attempts. Last error: {last_error}")
     questions = data.get("questions")
     if not isinstance(questions, list) or len(questions) != QUESTION_COUNT:
         raise RuntimeError(f"Granite must return exactly {QUESTION_COUNT} questions.")
