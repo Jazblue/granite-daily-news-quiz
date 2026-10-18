@@ -23,6 +23,7 @@ DATA_FILE = ROOT / "data" / "quiz.json"
 LOG_DIR = ROOT / "logs"
 LOG_FILE = LOG_DIR / "quiz-run.log"
 RSS_URL = "https://feeds.bbci.co.uk/news/rss.xml"
+OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
 MODEL = os.environ.get("OLLAMA_MODEL", "granite4:3b")
 MAX_STORIES = 12
 QUESTION_COUNT = 5
@@ -58,51 +59,80 @@ def fetch_stories():
     return stories
 
 def generate(stories):
-    # Keep source URLs with every item and request strict JSON for predictable rendering.
     prompt = """You create a short general-knowledge current-affairs quiz for a personal learning project.
-Use only the facts supported by the supplied story titles and short feed descriptions. Do not invent details.
-If a fact cannot be answered reliably from this evidence, skip that story and use another.
-Return ONLY valid JSON with this exact shape:
-{"questions":[{"question":"...","options":["...","...","...","..."],"answer_index":0,"explanation":"One-sentence explanation grounded in the evidence.","source_index":0}]}
-Create exactly five distinct multiple-choice questions. Each must have exactly four plausible options, one correct answer, and answer_index as integer 0-3. Avoid questions that simply ask for a headline's exact wording. Do not include markdown or any text outside JSON.
-Evidence stories (source_index refers to the zero-based story index):
+Use only facts supported by the supplied story titles and short feed descriptions. Do not invent details.
+If a fact cannot be answered reliably from this evidence, make a question from another story.
+Create exactly five distinct multiple-choice questions. Each question needs exactly four plausible options, one correct answer, an integer answer_index from 0 to 3, a one-sentence explanation, and a source_index referring to the zero-based evidence story index.
+Avoid questions that simply ask for a headline's exact wording.
+The response must follow the supplied JSON schema.
+Evidence stories:
 """ + json.dumps(stories, ensure_ascii=False)
-    # Retry generation when a small local model emits malformed JSON.
-    # Only continue to validation/publishing after a response parses successfully.
+
+    # Ollama's native structured-output mode constrains the model to the required JSON schema.
+    schema = {
+        "type": "object",
+        "properties": {
+            "questions": {
+                "type": "array",
+                "minItems": QUESTION_COUNT,
+                "maxItems": QUESTION_COUNT,
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "question": {"type": "string"},
+                        "options": {
+                            "type": "array", "minItems": 4, "maxItems": 4,
+                            "items": {"type": "string"}
+                        },
+                        "answer_index": {"type": "integer", "minimum": 0, "maximum": 3},
+                        "explanation": {"type": "string"},
+                        "source_index": {
+                            "type": "integer", "minimum": 0, "maximum": len(stories) - 1
+                        }
+                    },
+                    "required": ["question", "options", "answer_index", "explanation", "source_index"],
+                    "additionalProperties": False
+                }
+            }
+        },
+        "required": ["questions"],
+        "additionalProperties": False
+    }
+
     data = None
     last_error = None
     for attempt in range(1, 4):
-        retry_prompt = prompt
-        if attempt > 1:
-            retry_prompt += (
-                "\\n\\nIMPORTANT: Your previous response was invalid JSON. "
-                "Return one complete, syntactically valid JSON object only. "
-                "Use double quotes, escape quotes inside strings, and do not truncate it."
-            )
-            logging.warning("Retrying Granite JSON generation (%s/3).", attempt)
-        result = run(
-            ["ollama", "run", "--nowordwrap", MODEL],
-            input_text=retry_prompt,
-            timeout=TIMEOUT_SECONDS,
+        request_body = {
+            "model": MODEL,
+            "prompt": prompt,
+            "stream": False,
+            "format": schema,
+            "options": {"temperature": 0.2}
+        }
+        request = urllib.request.Request(
+            OLLAMA_URL,
+            data=json.dumps(request_body, ensure_ascii=False).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST"
         )
-        output = result.stdout.strip()
-        if not output:
-            last_error = "Ollama returned empty output."
-            continue
-        # Tolerate accidental surrounding code fences.
-        output = re.sub(r"^\\s*```(?:json)?\\s*|\\s*```\\s*$", "", output, flags=re.I)
-        start, end = output.find("{"), output.rfind("}")
-        if start < 0 or end <= start:
-            last_error = "Granite did not return a JSON object."
-            continue
         try:
-            data = json.loads(output[start:end+1])
+            logging.info("Requesting schema-constrained JSON from Ollama (attempt %s/3).", attempt)
+            with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as response:
+                api_result = json.loads(response.read().decode("utf-8"))
+            output = api_result.get("response", "").strip()
+            if not output:
+                last_error = "Ollama returned empty output."
+                logging.warning("%s", last_error)
+                continue
+            data = json.loads(output)
             break
-        except json.JSONDecodeError as exc:
-            last_error = f"Granite returned malformed JSON: {exc}"
-            logging.warning("Invalid JSON from Granite on attempt %s/3: %s", attempt, exc)
+        except (json.JSONDecodeError, urllib.error.URLError, TimeoutError) as exc:
+            last_error = str(exc)
+            logging.warning("Structured generation attempt %s/3 failed: %s", attempt, exc)
+
     if data is None:
-        raise RuntimeError(f"Granite failed to return valid JSON after 3 attempts. Last error: {last_error}")
+        raise RuntimeError(f"Ollama failed to return valid schema-constrained JSON after 3 attempts. Last error: {last_error}")
+
     questions = data.get("questions")
     if not isinstance(questions, list) or len(questions) != QUESTION_COUNT:
         raise RuntimeError(f"Granite must return exactly {QUESTION_COUNT} questions.")
