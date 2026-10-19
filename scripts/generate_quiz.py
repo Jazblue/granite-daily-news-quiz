@@ -58,11 +58,15 @@ def fetch_stories():
         raise RuntimeError(f"RSS returned only {len(stories)} usable stories; need at least {QUESTION_COUNT}.")
     return stories
 
+def normalize_text(value):
+    """Normalize text for duplicate detection without changing displayed wording."""
+    return re.sub(r"\W+", " ", value.casefold(), flags=re.UNICODE).strip()
+
 def generate(stories):
     prompt = """You create a short general-knowledge current-affairs quiz for a personal learning project.
 Use only facts supported by the supplied story titles and short feed descriptions. Do not invent details.
 If a fact cannot be answered reliably from this evidence, make a question from another story.
-Create exactly five distinct multiple-choice questions. Each question needs exactly four plausible options, one correct answer, an integer answer_index from 0 to 3, a one-sentence explanation, and a source_index referring to the zero-based evidence story index.
+Create exactly five distinct multiple-choice questions, each based on a DIFFERENT evidence story. Do not write multiple questions about the same event or closely related reports. Each question needs exactly four distinct plausible options, one correct answer, an integer answer_index from 0 to 3, a one-sentence explanation, and a source_index referring to the zero-based evidence story index.
 Avoid questions that simply ask for a headline's exact wording.
 The response must follow the supplied JSON schema.
 Evidence stories:
@@ -151,6 +155,8 @@ Evidence stories:
             raise RuntimeError(f"Question {i+1} has an empty option.")
         if not isinstance(answer_index, int) or isinstance(answer_index, bool) or answer_index not in range(4):
             raise RuntimeError(f"Question {i+1} has invalid answer_index.")
+        if len({normalize_text(x) for x in options}) != 4:
+            raise RuntimeError(f"Question {i+1} has duplicate answer options.")
         if not explanation:
             raise RuntimeError(f"Question {i+1} has no explanation.")
         if not isinstance(source_index, int) or isinstance(source_index, bool) or source_index not in range(len(stories)):
@@ -159,8 +165,10 @@ Evidence stories:
         checked.append({"question": question, "options": [x.strip() for x in options],
                         "answer_index": answer_index, "explanation": explanation,
                         "source_title": source["title"], "source_url": source["url"]})
-    if len({q["question"].casefold() for q in checked}) != QUESTION_COUNT:
-        raise RuntimeError("Granite returned duplicate questions.")
+    if len({normalize_text(q["question"]) for q in checked}) != QUESTION_COUNT:
+        raise RuntimeError("Granite returned duplicate or near-identical questions.")
+    if len({q["source_url"] for q in checked}) != QUESTION_COUNT:
+        raise RuntimeError("Questions must come from five different news stories; repeated sources detected.")
     return checked
 
 def publish_with_git():
